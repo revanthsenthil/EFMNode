@@ -50,6 +50,9 @@ class Ros2Bridge:
         
         self.executor = MultiThreadedExecutor(num_threads=num_threads)
         self.last_obs_time = None
+        self._last_no_new_head_log_time = 0.0
+        self._last_empty_head_log_time = 0.0
+        self._seen_first_image = set()
         
         self.init_topics()
 
@@ -68,7 +71,7 @@ class Ros2Bridge:
             self.subscribers[channel] = self.node.create_subscription(
                 msg_type, 
                 channel, 
-                partial(self.image_callback, _stack=self.obs_buffer[name]), 
+                partial(self.image_callback, _stack=self.obs_buffer[name], image_name=name), 
                 self.topics_config.qos["sub"],
                 callback_group=self.callback_group
             )
@@ -105,6 +108,17 @@ class Ros2Bridge:
         for name, msg in asdict(action).items():
             if msg is not None and name in self.enable_publish:
                 self.publishers[self.topics_config.action[name]].publish(msg)
+
+    def get_latest_feedback_snapshot(self) -> dict:
+        snapshot = {"state": {}, "timestamps": {}}
+        for name in self.topics_config.state.keys():
+            buffer = self.obs_buffer.get(name)
+            if buffer is None or len(buffer) == 0:
+                continue
+            latest = buffer[-1]
+            snapshot["state"][name] = np.asarray(latest["data"], dtype=np.float32)
+            snapshot["timestamps"][name] = float(latest["message_time"])
+        return snapshot
 
     def reset(self, step_size=0.2, freq = 5):
         # reset to zero joints and close grippers
@@ -168,7 +182,17 @@ class Ros2Bridge:
     def gather_obs(self, device: torch.device = torch.device("cuda")):
         head_rgb_key = "head_rgb"
         if head_rgb_key not in self.obs_buffer or len(self.obs_buffer[head_rgb_key]) == 0:
-            logger.warning("Head camera buffer is empty")
+            now = time.time()
+            if now - self._last_empty_head_log_time > 1.0:
+                image_queue_sizes = {
+                    name: len(self.obs_buffer.get(name, []))
+                    for name in self.topics_config.images.keys()
+                }
+                logger.warning(
+                    f"Waiting for first head-camera frame. "
+                    f"Image buffer sizes: {image_queue_sizes}"
+                )
+                self._last_empty_head_log_time = now
             return None, None
         
         head_buffer = self.obs_buffer[head_rgb_key]
@@ -176,7 +200,10 @@ class Ros2Bridge:
         reference_time = head_msg["message_time"]
 
         if self.last_obs_time == reference_time:
-            logger.warning(f'No new message in Head camera buffer')
+            now = time.time()
+            if now - self._last_no_new_head_log_time > 1.0:
+                logger.info('Waiting for next head-camera frame...')
+                self._last_no_new_head_log_time = now
             return None, None
         
         obs = {"images": {}, "state": {}}
@@ -205,8 +232,10 @@ class Ros2Bridge:
                 
             
             if name == 'chassis':
-                obs["state"][name] = obs["state"][name][..., 0: 3]
-                torch.atan2(torch.sin(obs["state"][name]), torch.cos(obs["state"][name]))
+                # Keep the full chassis feedback vector. The R1Lite training config
+                # expects the raw chassis state shape to remain 6 before any
+                # downstream processor transforms are applied.
+                obs["state"][name] = obs["state"][name].float()
 
         obs["state_is_pad"] = torch.tensor([False])
         obs["image_is_pad"] = torch.tensor([False])
@@ -267,11 +296,14 @@ class Ros2Bridge:
                 "header_time": timestamp,
             }
     
-    def image_callback(self, msg: CompressedImage, _stack=None):
+    def image_callback(self, msg: CompressedImage, _stack=None, image_name: str = "unknown"):
         data_dict = self._create_data_dict(
             timestamp=header_stamp_to_timestamp(msg.header.stamp),
             data=compressed_image_to_rgb_array(msg.data))
         _stack.append(data_dict)
+        if image_name not in self._seen_first_image:
+            self._seen_first_image.add(image_name)
+            logger.info(f"Received first image on {image_name}")
 
     def state_callback(self, msg: JointState, _stack=None, state_name: str="None"):
         if state_name == "chassis":
@@ -303,4 +335,3 @@ class Ros2Bridge:
             data=pose_to_7d_array(msg.pose))
     
         _stack.append(data_dict)
-

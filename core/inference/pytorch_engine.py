@@ -18,6 +18,18 @@ class PyTorchEngine(InferenceEngine):
         
         checkpoint_path = Path(self.config['model']['ckpt_dir'])
         state_dict_path = checkpoint_path / "model_state_dict.pt"
+        if not state_dict_path.exists():
+            fallback_state_dict_path = checkpoint_path / "model.pt"
+            if fallback_state_dict_path.exists():
+                logger.warning(
+                    f"{state_dict_path} not found, falling back to {fallback_state_dict_path}"
+                )
+                state_dict_path = fallback_state_dict_path
+            else:
+                raise FileNotFoundError(
+                    f"Neither {checkpoint_path / 'model_state_dict.pt'} nor "
+                    f"{checkpoint_path / 'model.pt'} exists"
+                )
         
         logger.info(f"Loading state dict from {state_dict_path}")
         state_dict = torch.load(state_dict_path, map_location=self.device)
@@ -71,4 +83,3 @@ class PyTorchEngine(InferenceEngine):
             batch = self.model.forward(batch, inference_mode=True)
         
         return batch
-

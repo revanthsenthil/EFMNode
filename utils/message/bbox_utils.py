@@ -1,13 +1,19 @@
-from google import genai
-from google.genai import types
+import os
 import re
 import cv2 as cv
 import time
 import numpy as np
 
+try:
+    from google import genai
+    from google.genai import types
+except ImportError:  # pragma: no cover - exercised only when optional dep is absent
+    genai = None
+    types = None
+
 MODEL_ID = "gemini-robotics-er-1.5-preview"
-API_KEY = ""
-client = genai.Client(api_key=API_KEY)
+API_KEY_ENV_VARS = ("GEMINI_API_KEY", "GOOGLE_API_KEY", "VLM_API_KEY")
+client = None
 
 
 prompt_template = """
@@ -44,6 +50,30 @@ def get_simple_vb_imgcv(image_array, bbox):
 
 @retry
 def call_gemini_for_bbox(image_array, instruction):
+    global client
+
+    if genai is None or types is None:
+        raise RuntimeError(
+            "google-genai is not installed in this environment. "
+            "Install the GalaxeaVLA dependencies before using image-conditioned terminal inference."
+        )
+
+    if client is None:
+        api_key = next(
+            (
+                os.environ.get(env_key)
+                for env_key in API_KEY_ENV_VARS
+                if os.environ.get(env_key) and os.environ.get(env_key) != "NaN"
+            ),
+            None,
+        )
+        if api_key is None:
+            raise RuntimeError(
+                "Missing Gemini API key for bbox selection. "
+                "Set one of: GEMINI_API_KEY, GOOGLE_API_KEY, or VLM_API_KEY."
+            )
+        client = genai.Client(api_key=api_key)
+
     image_array = cv.cvtColor(image_array, cv.COLOR_RGB2BGR)
     h, w, _ = image_array.shape
     _, image_bytes = cv.imencode('.jpg', image_array)

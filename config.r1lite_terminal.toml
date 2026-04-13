@@ -1,43 +1,41 @@
 [robot]
-hardware = "R1_PRO"
+hardware = "R1_LITE"
 
 # comment out keys you don't want to publish
 enable_publish = [
     #"left_arm",
-    "left_gripper",
+    #"left_gripper",
     #"left_ee_pose",
-    #"right_arm",
+    "right_arm",
     "right_gripper",
-    "right_ee_pose",
+    #"right_ee_pose",
     "torso",
     #"chassis",
 ]
 
-
 [basic]
 use_ehi = false
 control_frequency = 15.0
-step_mode = "async" # Optional["sync", "async"]
+step_mode = "sync"
 action_steps = 32
 
 [model]
-ckpt_dir = "/home/user/bench_ws/model_res/bench_r1pro_g0tiny_gift"
-processor = "default" # Optional["default", "cuda"]
+ckpt_dir = "/replace/with/your/model/path"
+processor = "default"
 use_trt = false
 is_torch_compile = false
 
 [trajectory]
 ensemble_mode = "HATO"
-execution_mode = "EE_POSE"
-
+execution_mode = "JOINT_STATE"
 
 [websocket]
-use_websocket = true
+use_websocket = false
 host = "0.0.0.0"
 port = 8080
 
 [instruction]
-use_vlm = false #
+use_vlm = false
 bbox_as_instruction = false
 image_condition_lang_prefix = false
 pp_lower_half = false

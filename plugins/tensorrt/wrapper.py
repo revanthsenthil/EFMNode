@@ -19,7 +19,23 @@ class TRTWrapper:
             self.engine = runtime.deserialize_cuda_engine(f.read())
 
         if not self.engine:
-            raise RuntimeError(f"Failed to deserialize engine: {engine_path}")
+            if torch.cuda.is_available():
+                device_idx = self.device.index if self.device.index is not None else torch.cuda.current_device()
+                gpu_name = torch.cuda.get_device_name(device_idx)
+                gpu_cc = torch.cuda.get_device_capability(device_idx)
+                gpu_desc = f"{gpu_name} (compute {gpu_cc[0]}.{gpu_cc[1]})"
+            else:
+                gpu_desc = "no CUDA GPU visible"
+            raise RuntimeError(
+                "Failed to deserialize engine: {}. "
+                "Active TensorRT Python/runtime version is {}. "
+                "Host GPU is {}. "
+                "This usually means the .engine file was built with a different TensorRT version. "
+                "It can also mean the .engine file was built for a different GPU architecture. "
+                "For the vendor zero-shot G0Plus bundle, use the matching vendor TRT runtime/container "
+                "(the repo scripts reference TensorRT-10.13.0.35) instead of a different host TRT build."
+                .format(engine_path, trt.__version__, gpu_desc)
+            )
 
         self.context = self.engine.create_execution_context()
 

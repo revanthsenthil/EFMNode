@@ -107,6 +107,13 @@ bbox_as_instruction = false         # Use bounding boxes as instructions
 image_condition_lang_prefix = true  # Use image condition with language prefix
 pp_lower_half = false               # Post-process lower half
 image_as_condition = true           # Use image as condition
+
+[visualization]
+enabled = true
+output_dir = ""                     # Empty means: <ckpt_dir>/efmnode_action_viz
+render_every_n_publishes = 5        # Refresh dashboard every N publish ticks
+keep_chunks = 12
+keep_publish_events = 400
 ```
 
 **Important Configuration Notes:**
@@ -165,6 +172,22 @@ You can modify `config.toml` and restart the node to apply changes. The node wil
 3. Initialize the inference engine and processor
 4. Connect to ROS2 topics
 5. Start the control loop
+
+### Action Chunk Visualization
+
+When `[visualization].enabled = true`, EFMNode writes live debugging artifacts to:
+
+```bash
+<ckpt_dir>/efmnode_action_viz/
+```
+
+The most useful files are:
+
+- `latest_dashboard.html` - interactive dashboard for the latest chunk, publish timing, inference-vs-horizon history, and a 3D EE path when EE actions are available
+- `latest_summary.json` - compact snapshot of the latest chunk and recent publish events
+- `trace.jsonl` - append-only event log of chunk predictions, publish ticks, and no-action ticks
+
+This is useful when the robot looks stop-and-go, because the dashboard makes it easy to see whether inference is slower than the action horizon, whether the scheduler is missing publish ticks, and what command values the robot is actually receiving over time.
 
 ## Troubleshooting
 

@@ -1,0 +1,45 @@
+[robot]
+hardware = "R1_LITE"
+
+# Publish the action heads that exist in the zero-shot checkpoint.
+enable_publish = [
+    "left_arm",
+    "left_gripper",
+    "right_arm",
+    "right_gripper",
+]
+
+[basic]
+use_ehi = false
+control_frequency = 15.0
+step_mode = "sync"
+action_steps = 32
+
+[model]
+ckpt_dir = "/replace/with/your/model/path"
+processor = "default"
+use_trt = true
+is_torch_compile = false
+
+[trajectory]
+ensemble_mode = "HATO"
+execution_mode = "JOINT_STATE"
+
+[websocket]
+use_websocket = false
+host = "0.0.0.0"
+port = 8080
+
+[instruction]
+use_vlm = false
+bbox_as_instruction = false
+image_condition_lang_prefix = "pick up the highlighted object"
+pp_lower_half = false
+image_as_condition = true
+
+[visualization]
+enabled = true
+output_dir = "/tmp/efmnode_action_viz"
+render_every_n_publishes = 5
+keep_chunks = 12
+keep_publish_events = 400

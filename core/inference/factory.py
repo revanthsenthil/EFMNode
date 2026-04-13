@@ -6,7 +6,33 @@ from loguru import logger
 from core.inference.inference_engine import InferenceEngine
 from core.inference.pytorch_engine import PyTorchEngine
 from core.inference.tensorrt_engine import TensorRTEngine
-from core.inference.websocket_engine import WebSocketClientEngine
+
+def _resolve_trt_engine_paths(ckpt_path: str) -> tuple[str, str]:
+    engine_pairs = [
+        (
+            "galaxea_zero_encoder_opt.fp16.engine",
+            "galaxea_zero_predictor_opt.fp16.engine",
+        ),
+        ("prefill.fp16.engine", "decode.fp16.engine"),
+    ]
+
+    for encoder_name, predictor_name in engine_pairs:
+        encoder_path = os.path.join(ckpt_path, encoder_name)
+        predictor_path = os.path.join(ckpt_path, predictor_name)
+        if os.path.exists(encoder_path) and os.path.exists(predictor_path):
+            logger.info(
+                "Using TensorRT engines: {} and {}",
+                encoder_name,
+                predictor_name,
+            )
+            return encoder_path, predictor_path
+
+    # Fall back to the legacy names so downstream errors still point at a
+    # concrete expected path when no known engine pair exists yet.
+    return (
+        os.path.join(ckpt_path, engine_pairs[0][0]),
+        os.path.join(ckpt_path, engine_pairs[0][1]),
+    )
 
 def create_inference_engine(
     config: Dict[str, Any],
@@ -19,8 +45,9 @@ def create_inference_engine(
         logger.info("Creating TensorRT inference engine")
         default_trt_config = {}
         ckpt_path = config["model"]["ckpt_dir"]
-        default_trt_config["encoder_path"] = os.path.join(ckpt_path, "galaxea_zero_encoder_opt.fp16.engine")
-        default_trt_config["predictor_path"] = os.path.join(ckpt_path, "galaxea_zero_predictor_opt.fp16.engine")
+        encoder_path, predictor_path = _resolve_trt_engine_paths(ckpt_path)
+        default_trt_config["encoder_path"] = encoder_path
+        default_trt_config["predictor_path"] = predictor_path
         default_trt_config["device"] = "cuda:0"
         default_trt_config["precision"] = "fp16"
         default_trt_config["plugin_path"] = os.path.join(ckpt_path, "gemma_rmsnorm.so")
@@ -40,5 +67,3 @@ def create_inference_engine(
     elif use_trt is False:
         logger.info("Creating PyTorch inference engine")
         return PyTorchEngine(config, cfg)
-
-

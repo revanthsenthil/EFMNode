@@ -1,6 +1,8 @@
 import json
 import pathlib
 from enum import Enum
+import copy
+import numpy as np
 from std_msgs.msg import String
 
 from utils.message.message_convert import decode_img_from_base64
@@ -92,10 +94,12 @@ class InstructionManager:
             )
             system_instruction = self.image_condition_lang_prefix
             extra_info["image"] = condition_image
+            extra_info["bbox"] = bbox
             extra_info["instruction"] = system_instruction
         elif self.bbox_as_instruction:
             bbox = call_gemini_for_bbox(head_rgb, instruction)
             paligemma_instrctuion = get_paligemma_box_instruction(head_rgb, bbox)
+            extra_info["bbox"] = bbox
             extra_info["instruction"] = paligemma_instrctuion
         else:
             extra_info["instruction"] = instruction
@@ -116,13 +120,34 @@ class InstructionManager:
             )
             system_instruction = self.image_condition_lang_prefix
             extra_info["image"] = condition_image
+            extra_info["bbox"] = bbox
             extra_info["instruction"] = system_instruction
         elif self.bbox_as_instruction:
             paligemma_instrctuion = get_paligemma_box_instruction(latest_head_rgb, bbox)
+            extra_info["bbox"] = bbox
             extra_info["instruction"] = paligemma_instrctuion
         else:
             extra_info["instruction"] = instruction
         return extra_info
+
+    def get_trace_context(self) -> dict:
+        trace_context = {
+            "bbox": None,
+            "condition_image": None,
+        }
+
+        bbox = None
+        if self.use_vlm:
+            bbox = self.latest_bbox_dict.get("bbox")
+        elif isinstance(self.extra_info, dict):
+            bbox = self.extra_info.get("bbox")
+            if "image" in self.extra_info:
+                trace_context["condition_image"] = np.array(self.extra_info["image"], copy=True)
+
+        if bbox is not None and len(bbox) == 4:
+            trace_context["bbox"] = [int(v) for v in bbox]
+
+        return copy.deepcopy(trace_context)
 
     def _refine_ll_instruction(self, instruction):
         if '[Low]' in instruction or instruction in ['reset', 'stop']:
@@ -145,4 +170,3 @@ class InstructionManager:
         low_level_instruction = lower_prompt_list[0]
         self.instruction = self._refine_ll_instruction(low_level_instruction)
         self.latest_bbox_dict = bbox_dict
-

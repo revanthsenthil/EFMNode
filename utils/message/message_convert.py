@@ -73,6 +73,16 @@ def array_to_pose_stamped(array: np.ndarray, timestamp: float = None):
     
     return pose_stamped
 
+def joint_state_to_array(joint_state: JointState | None) -> np.ndarray | None:
+    if joint_state is None:
+        return None
+    return np.asarray(joint_state.position, dtype=np.float32)
+
+def pose_stamped_to_array(pose_stamped: PoseStamped | None) -> np.ndarray | None:
+    if pose_stamped is None:
+        return None
+    return pose_to_7d_array(pose_stamped.pose).astype(np.float32)
+
 def decode_img_from_base64(img_base64: str, output_format="rgb") -> np.ndarray:
     img_data = base64.b64decode(img_base64)
     # 将二进制数据转换为 numpy 数组
@@ -117,23 +127,45 @@ def actions_dict_to_array(actions:dict, execution_mode: ExecutionMode) -> np.nda
 
     return np.concatenate(actions_list, axis=2)   
 
-def array_to_action(actions: np.ndarray, execution_mode: ExecutionMode):
+def array_to_action(actions: np.ndarray, execution_mode: ExecutionMode, timestamp: float = None):
 
     action_kwargs = {}
 
     if execution_mode == ExecutionMode.EE_POSE:
-        action_kwargs["left_ee_pose"] = array_to_pose_stamped(actions[0:7])
-        action_kwargs["left_gripper"] = array_to_joint_state(actions[7:8])
-        action_kwargs["right_ee_pose"] = array_to_pose_stamped(actions[8:15])
-        action_kwargs["right_gripper"] = array_to_joint_state(actions[15:16])
-        action_kwargs["torso"] = array_to_joint_state(actions[16:20])
+        action_kwargs["left_ee_pose"] = array_to_pose_stamped(actions[0:7], timestamp)
+        action_kwargs["left_gripper"] = array_to_joint_state(actions[7:8], timestamp)
+        action_kwargs["right_ee_pose"] = array_to_pose_stamped(actions[8:15], timestamp)
+        action_kwargs["right_gripper"] = array_to_joint_state(actions[15:16], timestamp)
+        action_kwargs["torso"] = array_to_joint_state(actions[16:20], timestamp)
     elif execution_mode == ExecutionMode.JOINT_STATE:
-        action_kwargs["left_arm"] = array_to_joint_state(actions[0:6])
-        action_kwargs["left_gripper"] = array_to_joint_state(actions[6:7])
-        action_kwargs["right_arm"] = array_to_joint_state(actions[7:13])
-        action_kwargs["right_gripper"] = array_to_joint_state(actions[13:14])
+        action_kwargs["left_arm"] = array_to_joint_state(actions[0:6], timestamp)
+        action_kwargs["left_gripper"] = array_to_joint_state(actions[6:7], timestamp)
+        action_kwargs["right_arm"] = array_to_joint_state(actions[7:13], timestamp)
+        action_kwargs["right_gripper"] = array_to_joint_state(actions[13:14], timestamp)
 
     return RobotAction(**action_kwargs)
+
+def robot_action_to_named_arrays(action: RobotAction) -> dict[str, np.ndarray]:
+    named_arrays = {}
+
+    if action.left_arm is not None:
+        named_arrays["left_arm"] = joint_state_to_array(action.left_arm)
+    if action.right_arm is not None:
+        named_arrays["right_arm"] = joint_state_to_array(action.right_arm)
+    if action.torso is not None:
+        named_arrays["torso"] = joint_state_to_array(action.torso)
+    if action.left_gripper is not None:
+        named_arrays["left_gripper"] = joint_state_to_array(action.left_gripper)
+    if action.right_gripper is not None:
+        named_arrays["right_gripper"] = joint_state_to_array(action.right_gripper)
+    if action.chassis is not None:
+        named_arrays["chassis"] = joint_state_to_array(action.chassis)
+    if action.left_ee_pose is not None:
+        named_arrays["left_ee_pose"] = pose_stamped_to_array(action.left_ee_pose)
+    if action.right_ee_pose is not None:
+        named_arrays["right_ee_pose"] = pose_stamped_to_array(action.right_ee_pose)
+
+    return named_arrays
 
 
 def actions_dict_to_trajectory(actions: dict, time_step: float=0.0666, num_of_steps: int=32, timestamp: float=None) -> Trajectory:
